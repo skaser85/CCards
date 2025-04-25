@@ -79,9 +79,13 @@ int main(void) {
   Deck deck = {0};
   CreateDeck(&deck);
 
+  Card *activeCard = NULL;
+
   while(!WindowShouldClose()) {
     BeginDrawing();
     ClearBackground(DARKGRAY);
+
+    Vector2 mouse = GetMousePosition();
 
     float scale = 0.35;
     float x = 20;
@@ -95,6 +99,16 @@ int main(void) {
       Rectangle dest = { .x = x, .y = y, .width = CARD_WIDTH*scale, .height = CARD_HEIGHT*scale };
       Vector2 origin = { .x = 0, .y = 0 };
       DrawTexturePro(cardsTexture, card.source, dest, origin, 0, WHITE);
+      if (activeCard == NULL) {
+        if (CheckCollisionPointRec(mouse, dest)) {
+          activeCard = &card;
+          DrawRectangleLinesEx(dest, 3, LIME);
+        }
+      } else if (activeCard == &card) {
+        if (!CheckCollisionPointRec(mouse, dest)) {
+          activeCard = NULL;
+        }
+      }
       x += (CARD_WIDTH*scale)+10;
     }
 
