@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "raymath.h"
 
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
@@ -6,6 +7,7 @@
 #define CARD_WIDTH 200
 #define CARD_HEIGHT 350
 #define CARD_SPACING 8
+#define CARD_SCALE 0.35
 
 #define HEARTS_Y 0
 #define DIAMONDS_Y 355
@@ -41,6 +43,7 @@ typedef struct {
   Suit suit;
   Value value;
   Rectangle source;
+  Vector2 position;
 } Card;
 
 typedef struct {
@@ -62,10 +65,21 @@ void CreateDeck(Deck *deck) {
 
     for (int v = VAL_ACE; v < VAL_COUNT; ++v) {
       Rectangle source = { .x = x, .y = y, .width = CARD_WIDTH, .height = CARD_HEIGHT };
-      Card c = { .suit = s, .value = v, .source = source };
+      Card c = { .suit = s, .value = v, .source = source, .position = Vector2Zero() };
       nob_da_append(deck, c);
       x += (CARD_WIDTH + CARD_SPACING);
     }
+  }
+
+  float x = 20;
+  float y = 10;
+  for (size_t c = 0; c < deck->count; ++c) {
+    if (c > 0 && c % 13 == 0) {
+      y += (CARD_HEIGHT*CARD_SCALE) + 10;
+      x = 20;
+    }
+    deck->items[c].position = CLITERAL(Vector2) { x, y };
+    x += (CARD_WIDTH*CARD_SCALE)+10;
   }
 }
 
@@ -86,30 +100,33 @@ int main(void) {
     ClearBackground(DARKGRAY);
 
     Vector2 mouse = GetMousePosition();
+    Vector2 delta = GetMouseDelta();
+    
+    if (activeCard != NULL) {
+      Rectangle bounds = { .x = activeCard->position.x, .y = activeCard->position.y, .width = CARD_WIDTH*CARD_SCALE, .height = CARD_HEIGHT*CARD_SCALE };
+      if (!CheckCollisionPointRec(mouse, bounds)) {
+        activeCard = NULL;
+      } else {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+          activeCard->position = Vector2Add(activeCard->position, delta);
+        }
+      } 
+    }
 
-    float scale = 0.35;
-    float x = 20;
-    float y = 10;
     for (size_t c = 0; c < deck.count; ++c) {
-      if (c > 0 && c % 13 == 0) {
-        y += (CARD_HEIGHT*scale) + 10;
-        x = 20;
-      }
-      Card card = deck.items[c];
-      Rectangle dest = { .x = x, .y = y, .width = CARD_WIDTH*scale, .height = CARD_HEIGHT*scale };
-      Vector2 origin = { .x = 0, .y = 0 };
-      DrawTexturePro(cardsTexture, card.source, dest, origin, 0, WHITE);
-      if (activeCard == NULL) {
-        if (CheckCollisionPointRec(mouse, dest)) {
-          activeCard = &card;
-          DrawRectangleLinesEx(dest, 3, LIME);
-        }
-      } else if (activeCard == &card) {
-        if (!CheckCollisionPointRec(mouse, dest)) {
-          activeCard = NULL;
+
+      Card *card = &deck.items[c];
+      Rectangle bounds = { .x = card->position.x, .y = card->position.y, .width = CARD_WIDTH*CARD_SCALE, .height = CARD_HEIGHT*CARD_SCALE };
+      DrawTexturePro(cardsTexture, card->source, bounds, Vector2Zero(), 0, WHITE);
+      
+      if (activeCard != NULL && activeCard == card) {
+        DrawRectangleLinesEx(bounds, 3, LIME);
+      } else {
+        if (CheckCollisionPointRec(mouse, bounds)) {
+          activeCard = card;
         }
       }
-      x += (CARD_WIDTH*scale)+10;
+      
     }
 
     EndDrawing();
