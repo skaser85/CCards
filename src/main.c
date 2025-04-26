@@ -7,10 +7,16 @@
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
 
-#define CARD_WIDTH 200
-#define CARD_HEIGHT 350
-#define CARD_SPACING 8
-#define CARD_SCALE 0.35
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1080 
+
+#define SRC_CARD_WIDTH 200
+#define SRC_CARD_HEIGHT 350
+#define SRC_CARD_SPACING 8
+#define SRC_CARD_SCALE 0.5
+
+#define CARD_WIDTH (SRC_CARD_WIDTH*SRC_CARD_SCALE)
+#define CARD_HEIGHT (SRC_CARD_HEIGHT*SRC_CARD_SCALE)
 
 #define HEARTS_Y 0
 #define DIAMONDS_Y 355
@@ -59,6 +65,7 @@ typedef struct {
   Value value;
   Rectangle source;
   Vector2 position;
+  bool drawn;
 } Card;
 
 typedef struct {
@@ -79,9 +86,11 @@ typedef struct {
 
 typedef struct {
   Deck deck;
+  Deck drawn;
   Card *hoveredCard;
   Card *activeCard;
   Backs *backs;
+  Back *activeBack;
 } GameState;
 
 void CreateDeck(Deck *deck) {
@@ -96,10 +105,10 @@ void CreateDeck(Deck *deck) {
     }
 
     for (int v = VAL_ACE; v < VAL_COUNT; ++v) {
-      Rectangle source = { .x = x, .y = y, .width = CARD_WIDTH, .height = CARD_HEIGHT };
+      Rectangle source = { .x = x, .y = y, .width = SRC_CARD_WIDTH, .height = SRC_CARD_HEIGHT };
       Card c = { .suit = s, .value = v, .source = source, .position = Vector2Zero() };
       nob_da_append(deck, c);
-      x += (CARD_WIDTH + CARD_SPACING);
+      x += (SRC_CARD_WIDTH + SRC_CARD_SPACING);
     }
   }
 }
@@ -109,47 +118,60 @@ void InitPosForTesting(Deck *deck) {
   float y = 10;
   for (size_t c = 0; c < deck->count; ++c) {
     if (c > 0 && c % 13 == 0) {
-      y += (CARD_HEIGHT*CARD_SCALE) + 10;
+      y += (CARD_HEIGHT) + 10;
       x = 20;
     }
     deck->items[c].position = CLITERAL(Vector2) { x, y };
-    x += (CARD_WIDTH*CARD_SCALE)+10;
+    x += (CARD_WIDTH)+10;
   }
 }
 
 void InitBacksTestingPos(Backs *backs) {
   float x = 20;
-  size_t y = CLUBS_Y + (CARD_HEIGHT*CARD_SCALE) + 10;
+  size_t y = (CARD_HEIGHT) + 10;
   for (int b = BC_RED; b < BC_COUNT; ++b) {
     Back *back = &hmget(backs, b);
     back->position = CLITERAL(Vector2) { x, y };
-    x += (CARD_WIDTH*CARD_SCALE)+10; 
+    x += (CARD_WIDTH)+10; 
   }
 }
 
 void CreateBacks(Backs **backs, int y) {
   size_t x = 0;
   for (int b = BC_RED; b < BC_COUNT; ++b) {
-    Rectangle r = { .x = x, .y = y, .width = CARD_WIDTH, .height = CARD_HEIGHT };
+    Rectangle r = { .x = x, .y = y, .width = SRC_CARD_WIDTH, .height = SRC_CARD_HEIGHT };
     Back back = { .source = r, .position = Vector2Zero() };
     hmput(*backs, b, back);
-    x += (CARD_WIDTH + CARD_SPACING);
+    x += (SRC_CARD_WIDTH + SRC_CARD_SPACING);
   }
 }
 
 bool DrawDeckItemToScreen(Texture2D tex, Vector2 pos, Rectangle src, Vector2 mouse) {
-  Rectangle bounds = { .x = pos.x, .y = pos.y, .width = CARD_WIDTH*CARD_SCALE, .height = CARD_HEIGHT*CARD_SCALE };
+  Rectangle bounds = { .x = pos.x, .y = pos.y, .width = CARD_WIDTH, .height = CARD_HEIGHT };
   DrawTexturePro(tex, src, bounds, Vector2Zero(), 0, WHITE);
   return CheckCollisionPointRec(mouse, bounds);
 }
 
 void DrawHoveredOutline(Card *card) {
-  Rectangle bounds = { .x = card->position.x, .y = card->position.y, .width = CARD_WIDTH*CARD_SCALE, .height = CARD_HEIGHT*CARD_SCALE };
+  Rectangle bounds = { .x = card->position.x, .y = card->position.y, .width = CARD_WIDTH, .height = CARD_HEIGHT };
   DrawRectangleLinesEx(bounds, 3, LIME);
 }
 
+void GetRandomCard(GameState *gs, Vector2 pos) {
+  Card *card = NULL;
+  while (!card) {
+    int v = GetRandomValue(0, gs->deck.count);
+    if (!gs->deck.items[v].drawn) {
+      card = &gs->deck.items[v];
+      card->drawn = true;
+      card->position = pos;
+      nob_da_append(&gs->drawn, *card);
+    }
+  }
+}
+
 int main(void) {
-  InitWindow(1200, 720, "Cards");
+  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Cards");
 
   Image cardsImg = LoadImage("./assets/cards.png");
   Texture cardsTexture = LoadTextureFromImage(cardsImg);
@@ -157,21 +179,23 @@ int main(void) {
   
   Deck deck = {0};
   CreateDeck(&deck);
-  InitPosForTesting(&deck);
+  //InitPosForTesting(&deck);
+  Deck drawn = {0};
 
   Image backsImg = LoadImage("./assets/backs.png");
   Texture backsTexture = LoadTextureFromImage(backsImg);
   UnloadImage(backsImg);
   Backs *backs = {0};
   CreateBacks(&backs, BACK_STYLE_H_MEANDER_Y);
-  nob_log(NOB_INFO, "backs count: %ld", hmlen(backs));
-  InitBacksTestingPos(backs);
+  //InitBacksTestingPos(backs);
 
   GameState gs = {0};
   gs.deck = deck;
+  gs.drawn = drawn;
   gs.backs = backs;
   gs.activeCard = NULL;
   gs.hoveredCard = NULL;
+  gs.activeBack = &hmget(backs, BC_BLUE);
 
   while(!WindowShouldClose()) {
     BeginDrawing();
@@ -179,40 +203,31 @@ int main(void) {
 
     Vector2 mouse = GetMousePosition();
     Vector2 delta = GetMouseDelta();
+ 
+    Rectangle deckBounds = { .x = 10, .y = 20, .width = (CARD_WIDTH)*1.25, .height = (CARD_HEIGHT)*1.15 };
+    DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
     
-    if (gs.activeCard) {
-      if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-        gs.activeCard = NULL;
-      } else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-          gs.activeCard->position = Vector2Add(gs.activeCard->position, delta);
+    if (gs.deck.count > gs.drawn.count) {
+      Vector2 backPos = { .x = deckBounds.x + (deckBounds.width-(CARD_WIDTH))/2, .y = deckBounds.y + (deckBounds.height-(CARD_HEIGHT))/2 };
+      gs.activeBack->position = backPos;
+      DrawDeckItemToScreen(backsTexture, backPos, gs.activeBack->source, mouse);
+
+      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        GetRandomCard(&gs, CLITERAL(Vector2) { .x = deckBounds.x + deckBounds.width + 25, .y = backPos.y });
+      }
+    } else {
+      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        gs.drawn.count = 0;
+        for (size_t c = 0; c < gs.deck.count; ++c) {
+          Card *card = &gs.deck.items[c];
+          card->drawn = false;
+        }
       }
     }
 
-    gs.hoveredCard = NULL;
-    for (size_t c = 0; c < gs.deck.count; ++c) {
-
-      Card *card = &gs.deck.items[c];
-      if (gs.activeCard && card == gs.activeCard) {
-        gs.hoveredCard = gs.activeCard;
-        continue;
-      }
-      
-      if (DrawDeckItemToScreen(cardsTexture, card->position, card->source, mouse) && !gs.activeCard)
-        gs.hoveredCard = card;
-    }
-
-    if (gs.activeCard) {
-      DrawDeckItemToScreen(cardsTexture, gs.activeCard->position, gs.activeCard->source, mouse);
-    }
-    if (gs.hoveredCard) {
-      DrawHoveredOutline(gs.hoveredCard);
-      if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-          gs.activeCard = gs.hoveredCard;
-    }
-
-    for (int b = BC_RED; b < BC_COUNT; ++b) {
-      Back *back = &hmget(gs.backs, b);
-      DrawDeckItemToScreen(backsTexture, back->position, back->source, mouse);
+    for (size_t c = 0; c < gs.drawn.count; ++c) {
+      Card card = gs.drawn.items[c];
+      DrawDeckItemToScreen(cardsTexture, card.position, card.source, mouse);
     }
 
     EndDrawing();
@@ -223,3 +238,39 @@ int main(void) {
 
   CloseWindow();
 }
+
+
+    //if (gs.activeCard) {
+    //  if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    //    gs.activeCard = NULL;
+    //  } else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+    //      gs.activeCard->position = Vector2Add(gs.activeCard->position, delta);
+    //  }
+    //}
+
+    //gs.hoveredCard = NULL;
+    //for (size_t c = 0; c < gs.deck.count; ++c) {
+
+    //  Card *card = &gs.deck.items[c];
+    //  if (gs.activeCard && card == gs.activeCard) {
+    //    gs.hoveredCard = gs.activeCard;
+    //    continue;
+    //  }
+    //  
+    //  if (DrawDeckItemToScreen(cardsTexture, card->position, card->source, mouse) && !gs.activeCard)
+    //    gs.hoveredCard = card;
+    //}
+
+    //if (gs.activeCard) {
+    //  DrawDeckItemToScreen(cardsTexture, gs.activeCard->position, gs.activeCard->source, mouse);
+    //}
+    //if (gs.hoveredCard) {
+    //  DrawHoveredOutline(gs.hoveredCard);
+    //  if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+    //      gs.activeCard = gs.hoveredCard;
+    //}
+   //
+   //for (int b = BC_RED; b < BC_COUNT; ++b) {
+   //  Back *back = &hmget(gs.backs, b);
+   //  DrawDeckItemToScreen(backsTexture, back->position, back->source, mouse);
+   //}
