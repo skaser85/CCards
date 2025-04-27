@@ -7,8 +7,8 @@
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
 
-#define SCREEN_WIDTH 1920
-#define SCREEN_HEIGHT 1080 
+#define SCREEN_WIDTH 1600
+#define SCREEN_HEIGHT 960
 
 #define SRC_CARD_WIDTH 200
 #define SRC_CARD_HEIGHT 350
@@ -258,8 +258,8 @@ int main(void) {
       }
     }
 
-    const char* text = sizetToString(gs.deck.count, 2);
-    DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+50, 30, LIME);
+    //const char* text = sizetToString(gs.deck.count, 2);
+    //DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+50, 30, LIME);
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];

@@ -11,6 +11,8 @@ int main(int argc, char **argv)
 
     if (!nob_mkdir_if_not_exists(BUILD_FOLDER)) return 1;
 
+    const char* program = nob_shift(argv, argc);
+
     // The working horse of nob is the Nob_Cmd structure. It's a Dynamic Array of strings which represent
     // command line that you want to execute.
     Nob_Cmd cmd = {0};
@@ -20,6 +22,14 @@ int main(int argc, char **argv)
 
     // nob_cmd_run_sync_and_reset() resets the cmd for you automatically
     if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
+    
+    if (argc > 0) {
+      const char* param = nob_shift(argv, argc);
+      if (strcmp(param, "run") == 0) {
+        nob_cmd_append(&cmd, "./"BUILD_FOLDER"/main");
+        if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
+      }
+    }
 
     return 0;
 }
