@@ -157,17 +157,47 @@ void DrawHoveredOutline(Card *card) {
   DrawRectangleLinesEx(bounds, 3, LIME);
 }
 
-void GetRandomCard(GameState *gs, Vector2 pos) {
+Card *GetNextCard(Deck *src, Deck *dest) {
+  nob_da_append(dest, src->items[0]);
+  src->count--;
+  if (src->count == 0) return &dest->items[dest->count-1];
+  for (size_t c = 1; c < src->count-1; ++c) {
+    src->items[c-1] = src->items[c];
+  }
+  return &dest->items[dest->count-1];
+}
+
+Card *GetRandomCard(Deck *deck) {
   Card *card = NULL;
   while (!card) {
-    int v = GetRandomValue(0, gs->deck.count);
-    if (!gs->deck.items[v].drawn) {
-      card = &gs->deck.items[v];
+    int v = GetRandomValue(0, deck->count);
+    if (!deck->items[v].drawn) {
+      card = &deck->items[v];
       card->drawn = true;
-      card->position = pos;
-      nob_da_append(&gs->drawn, *card);
+      break;
     }
   }
+  return card;
+}
+
+void ShuffleDeck(Deck *deck) {
+  Deck temp = {0};
+  for (size_t c = 0; c < deck->count; ++c) {
+    Card *card = GetRandomCard(deck);
+    nob_da_append(&temp, *card);
+  }
+  deck->count = 0;
+  for (size_t c = 0; c < temp.count; ++c) {
+    Card card = temp.items[c];
+    nob_da_append(deck, card);
+  }
+}
+
+const char* sizetToString(size_t num, size_t len) {
+  char* buffer = (char*)malloc((len+1)*sizeof(char));
+  if (!buffer) return NULL;
+  snprintf(buffer, (len+1), "%ld", num);
+  return buffer;
 }
 
 int main(void) {
@@ -179,6 +209,7 @@ int main(void) {
   
   Deck deck = {0};
   CreateDeck(&deck);
+  ShuffleDeck(&deck);
   //InitPosForTesting(&deck);
   Deck drawn = {0};
 
@@ -207,23 +238,28 @@ int main(void) {
     Rectangle deckBounds = { .x = 10, .y = 20, .width = (CARD_WIDTH)*1.25, .height = (CARD_HEIGHT)*1.15 };
     DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
     
-    if (gs.deck.count > gs.drawn.count) {
+    if (gs.deck.count > 0) {
       Vector2 backPos = { .x = deckBounds.x + (deckBounds.width-(CARD_WIDTH))/2, .y = deckBounds.y + (deckBounds.height-(CARD_HEIGHT))/2 };
       gs.activeBack->position = backPos;
       DrawDeckItemToScreen(backsTexture, backPos, gs.activeBack->source, mouse);
 
       if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        GetRandomCard(&gs, CLITERAL(Vector2) { .x = deckBounds.x + deckBounds.width + 25, .y = backPos.y });
+        Card *card = GetNextCard(&gs.deck, &gs.drawn); 
+        card->position = CLITERAL(Vector2) { .x = deckBounds.x + deckBounds.width + 25, .y = backPos.y };
       }
     } else {
       if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        gs.drawn.count = 0;
-        for (size_t c = 0; c < gs.deck.count; ++c) {
-          Card *card = &gs.deck.items[c];
-          card->drawn = false;
+        for (size_t c = 0; c < gs.drawn.count; ++c) {
+          Card card = gs.drawn.items[c];
+          card.drawn = false;
+          nob_da_append(&gs.deck, card);
         }
+        gs.drawn.count = 0;
       }
     }
+
+    const char* text = sizetToString(gs.deck.count, 2);
+    DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+50, 30, LIME);
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];
