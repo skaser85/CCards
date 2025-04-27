@@ -18,6 +18,11 @@
 #define CARD_WIDTH (SRC_CARD_WIDTH*SRC_CARD_SCALE)
 #define CARD_HEIGHT (SRC_CARD_HEIGHT*SRC_CARD_SCALE)
 
+#define FILES_COUNT 7
+#define PILES_WIDTH CARD_WIDTH*1.25
+#define PILES_HEIGHT CARD_HEIGHT*1.15
+#define PILES_SPACING 20
+
 #define HEARTS_Y 0
 #define DIAMONDS_Y 355
 #define SPADES_Y 710
@@ -60,6 +65,13 @@ typedef enum {
   BC_COUNT
 } BackColor;
 
+typedef enum {
+  DECK_STD,
+  DECK_DISCARD,
+  DECK_FILE,
+  DECK_COUNT
+} DeckKind;
+
 typedef struct {
   Suit suit;
   Value value;
@@ -72,6 +84,9 @@ typedef struct {
   Card *items;
   size_t capacity;
   size_t count;
+  DeckKind kind;
+  Vector2 position;
+  Vector2 cardStart;
 } Deck;
 
 typedef struct {
@@ -85,15 +100,26 @@ typedef struct {
 } Backs;
 
 typedef struct {
+  Deck *items;
+  size_t capacity;
+  size_t count;
+} DeckFiles;
+
+typedef struct {
   Deck deck;
   Deck drawn;
   Card *hoveredCard;
   Card *activeCard;
   Backs *backs;
   Back *activeBack;
+  DeckFiles files;
 } GameState;
 
-void CreateDeck(Deck *deck) {
+bool CreateSTDDeck(Deck *deck) {
+  if (deck->kind != DECK_STD) {
+    nob_log(NOB_ERROR, "Invalid deck kind for CreateSTDDeck");
+    return false;
+  }
   for (int s = SUIT_CLUB; s < SUIT_COUNT; ++s) {
     size_t x = 0;
     size_t y = 0;
@@ -110,6 +136,17 @@ void CreateDeck(Deck *deck) {
       nob_da_append(deck, c);
       x += (SRC_CARD_WIDTH + SRC_CARD_SPACING);
     }
+  }
+  return true;
+}
+
+void CreateBacks(Backs **backs, int y) {
+  size_t x = 0;
+  for (int b = BC_RED; b < BC_COUNT; ++b) {
+    Rectangle r = { .x = x, .y = y, .width = SRC_CARD_WIDTH, .height = SRC_CARD_HEIGHT };
+    Back back = { .source = r, .position = Vector2Zero() };
+    hmput(*backs, b, back);
+    x += (SRC_CARD_WIDTH + SRC_CARD_SPACING);
   }
 }
 
@@ -133,16 +170,6 @@ void InitBacksTestingPos(Backs *backs) {
     Back *back = &hmget(backs, b);
     back->position = CLITERAL(Vector2) { x, y };
     x += (CARD_WIDTH)+10; 
-  }
-}
-
-void CreateBacks(Backs **backs, int y) {
-  size_t x = 0;
-  for (int b = BC_RED; b < BC_COUNT; ++b) {
-    Rectangle r = { .x = x, .y = y, .width = SRC_CARD_WIDTH, .height = SRC_CARD_HEIGHT };
-    Back back = { .source = r, .position = Vector2Zero() };
-    hmput(*backs, b, back);
-    x += (SRC_CARD_WIDTH + SRC_CARD_SPACING);
   }
 }
 
@@ -208,10 +235,12 @@ int main(void) {
   UnloadImage(cardsImg);
   
   Deck deck = {0};
-  CreateDeck(&deck);
+  deck.kind = DECK_STD;
+  if (!CreateSTDDeck(&deck)) return 1;
   ShuffleDeck(&deck);
   //InitPosForTesting(&deck);
   Deck drawn = {0};
+  drawn.kind = DECK_DISCARD;
 
   Image backsImg = LoadImage("./assets/backs.png");
   Texture backsTexture = LoadTextureFromImage(backsImg);
@@ -220,6 +249,8 @@ int main(void) {
   CreateBacks(&backs, BACK_STYLE_H_MEANDER_Y);
   //InitBacksTestingPos(backs);
 
+  DeckFiles deckFiles = {0};
+
   GameState gs = {0};
   gs.deck = deck;
   gs.drawn = drawn;
@@ -227,6 +258,20 @@ int main(void) {
   gs.activeCard = NULL;
   gs.hoveredCard = NULL;
   gs.activeBack = &hmget(backs, BC_BLUE);
+  gs.files = deckFiles;
+
+  size_t fx = 10;
+  size_t fy = 20 + PILES_HEIGHT + 50;
+  for (size_t f = 0; f < FILES_COUNT; ++f) {
+    Deck d = {0};
+    d.kind = DECK_FILE;
+    d.position = CLITERAL(Vector2) { .x = fx + (PILES_WIDTH * f) + (PILES_SPACING * f), .y = fy };
+    for (size_t c = 0; c < f+1; ++c) {
+      Card *card = GetNextCard(&gs.deck, &d);
+      card->position = CLITERAL(Vector2) { .x = d.position.x + (PILES_WIDTH-CARD_WIDTH)/2, .y = d.position.y + (PILES_HEIGHT-CARD_HEIGHT)/2};
+    }
+    nob_da_append(&gs.files, d);
+  }
 
   while(!WindowShouldClose()) {
     BeginDrawing();
@@ -235,7 +280,7 @@ int main(void) {
     Vector2 mouse = GetMousePosition();
     Vector2 delta = GetMouseDelta();
  
-    Rectangle deckBounds = { .x = 10, .y = 20, .width = (CARD_WIDTH)*1.25, .height = (CARD_HEIGHT)*1.15 };
+    Rectangle deckBounds = { .x = 10, .y = 20, .width = PILES_WIDTH, .height = PILES_HEIGHT };
     DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
     
     if (gs.deck.count > 0) {
@@ -258,12 +303,22 @@ int main(void) {
       }
     }
 
-    //const char* text = sizetToString(gs.deck.count, 2);
-    //DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+50, 30, LIME);
+    const char* text = sizetToString(gs.deck.count, 2);
+    DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+10, 30, LIME);
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];
       DrawDeckItemToScreen(cardsTexture, card.position, card.source, mouse);
+    }
+
+    for (size_t f = 0; f < gs.files.count; ++f) {
+      Deck d = gs.files.items[f];
+      Rectangle r = { .x = d.position.x, .y = d.position.y, .width = PILES_WIDTH, .height = PILES_HEIGHT };
+      DrawRectangleLinesEx(r, 5, DARKPURPLE);
+      for (size_t c = 0; c < d.count; ++c) {
+        Card card = d.items[c];
+        DrawDeckItemToScreen(cardsTexture, card.position, card.source, mouse);
+      }
     }
 
     EndDrawing();
