@@ -7,16 +7,21 @@
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
 
+#if 0
 #define SCREEN_WIDTH 2140 
-#define SCREEN_HEIGHT 1440 
+#define SCREEN_HEIGHT 1440
+#else
+#define SCREEN_WIDTH 1600 
+#define SCREEN_HEIGHT 960
+#endif
 
 #define SRC_CARD_WIDTH 200
 #define SRC_CARD_HEIGHT 350
 #define SRC_CARD_SPACING_X 8
 #define SRC_CARD_SPACING_Y 5
-#define SRC_CARD_SCALE 1
+#define SRC_CARD_SCALE .5
 
-#define CARD_WIDTH (SRC_CARD_WIDTH*SRC_CARD_SCALE)
+#define CARD_WIDTH (SRC_CARD_WIDTH*SRC_CARD_SCALE+10)
 #define CARD_HEIGHT (SRC_CARD_HEIGHT*SRC_CARD_SCALE)
 
 #define FILES_COUNT 7
@@ -302,8 +307,8 @@ int main(void) {
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];
-      if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse))
-        gs.hoveredCard = &card;
+      if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse)) 
+        gs.hoveredCard = &gs.drawn.items[c];
     }
 
     for (size_t f = 0; f < gs.files.count; ++f) {
@@ -313,20 +318,16 @@ int main(void) {
       for (size_t c = 0; c < d.count; ++c) {
         Card card = d.items[c];
         if (card.flipped) {
-          if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse)) {
-            gs.hoveredCard = &card;
-            //nob_log(NOB_INFO, "%d, %d", card.suit, card.value);
-          }
+          if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse))
+            gs.hoveredCard = &d.items[c];
         } else {
           DrawDeckItemToScreen(backsTexture, card.bounds, gs.activeBack->source, mouse);
         }
       }
     }
 
-    if (gs.hoveredCard) {
+    if (gs.hoveredCard)
       DrawHoveredOutline(gs.hoveredCard->bounds);
-      nob_log(NOB_INFO, "%d, %d", gs.hoveredCard->suit, gs.hoveredCard->value);
-    }
 
     EndDrawing();
   }
