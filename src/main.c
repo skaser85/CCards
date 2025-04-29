@@ -75,8 +75,10 @@ typedef struct {
   Value value;
   Rectangle source;
   Rectangle bounds;
+  Vector2 origPos;
   bool drawn;
   bool flipped;
+  bool moved;
 } Card;
 
 typedef struct {
@@ -216,6 +218,31 @@ const char* sizetToString(size_t num, size_t len) {
   return buffer;
 }
 
+void UpdatePosition(Card *card, Vector2 delta) {
+  if (!card->moved) {
+    card->origPos.x = card->bounds.x;
+    card->origPos.y = card->bounds.y;
+    card->moved = true;
+  }
+  Vector2 pos = { .x = card->bounds.x, .y = card->bounds.y };
+  pos = Vector2Add(pos, delta);
+  card->bounds.x = pos.x;
+  card->bounds.y = pos.y;
+}
+
+void ResetPosition(Card *card) {
+  card->bounds.x = card->origPos.x;
+  card->bounds.y = card->origPos.y;
+  card->moved = false;
+}
+
+void SetPosition(Card *card, Vector2 pos) {
+  card->bounds.x = pos.x;
+  card->bounds.y = pos.y;
+  card->origPos.x = pos.x;
+  card->origPos.y = pos.y;
+}
+
 int main(void) {
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Cards");
 
@@ -227,7 +254,6 @@ int main(void) {
   deck.kind = DECK_STD;
   if (!CreateSTDDeck(&deck)) return 1;
   ShuffleDeck(&deck);
-  //InitPosForTesting(&deck);
   Deck drawn = {0};
   drawn.kind = DECK_DISCARD;
 
@@ -236,7 +262,6 @@ int main(void) {
   UnloadImage(backsImg);
   Backs *backs = {0};
   CreateBacks(&backs, BK_MEANDER_BORDER);
-  //InitBacksTestingPos(backs);
 
   DeckFiles deckFiles = {0};
 
@@ -275,6 +300,11 @@ int main(void) {
 
     Vector2 mouse = GetMousePosition();
     Vector2 delta = GetMouseDelta();
+
+    if (gs.activeCard) {
+      gs.hoveredCard = gs.activeCard;
+      UpdatePosition(gs.activeCard, delta);
+    }
  
     Rectangle deckBounds = { .x = 10, .y = 20, .width = PILES_WIDTH, .height = PILES_HEIGHT };
     DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
@@ -291,7 +321,7 @@ int main(void) {
         card->flipped = true;
       }
     } else {
-      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) & !gs.activeCard) {
         for (size_t c = 0; c < gs.drawn.count; ++c) {
           Card card = gs.drawn.items[c];
           card.drawn = false;
@@ -307,7 +337,7 @@ int main(void) {
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];
-      if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse)) 
+      if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse) && !gs.activeCard) 
         gs.hoveredCard = &gs.drawn.items[c];
     }
 
@@ -318,7 +348,7 @@ int main(void) {
       for (size_t c = 0; c < d.count; ++c) {
         Card card = d.items[c];
         if (card.flipped) {
-          if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse))
+          if (DrawDeckItemToScreen(cardsTexture, card.bounds, card.source, mouse) && !gs.activeCard)
             gs.hoveredCard = &d.items[c];
         } else {
           DrawDeckItemToScreen(backsTexture, card.bounds, gs.activeBack->source, mouse);
@@ -326,8 +356,21 @@ int main(void) {
       }
     }
 
-    if (gs.hoveredCard)
+    if (gs.hoveredCard) {
       DrawHoveredOutline(gs.hoveredCard->bounds);
+      if (!gs.activeCard) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+          gs.activeCard = gs.hoveredCard;
+        }
+      } else {
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+          ResetPosition(gs.activeCard);
+          gs.activeCard = NULL;
+        } else {
+          DrawDeckItemToScreen(cardsTexture, gs.activeCard->bounds, gs.activeCard->source, mouse);
+        }
+      }
+    }
 
     EndDrawing();
   }
@@ -337,39 +380,3 @@ int main(void) {
 
   CloseWindow();
 }
-
-
-    //if (gs.activeCard) {
-    //  if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-    //    gs.activeCard = NULL;
-    //  } else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-    //      gs.activeCard->position = Vector2Add(gs.activeCard->position, delta);
-    //  }
-    //}
-
-    //gs.hoveredCard = NULL;
-    //for (size_t c = 0; c < gs.deck.count; ++c) {
-
-    //  Card *card = &gs.deck.items[c];
-    //  if (gs.activeCard && card == gs.activeCard) {
-    //    gs.hoveredCard = gs.activeCard;
-    //    continue;
-    //  }
-    //  
-    //  if (DrawDeckItemToScreen(cardsTexture, card->position, card->source, mouse) && !gs.activeCard)
-    //    gs.hoveredCard = card;
-    //}
-
-    //if (gs.activeCard) {
-    //  DrawDeckItemToScreen(cardsTexture, gs.activeCard->position, gs.activeCard->source, mouse);
-    //}
-    //if (gs.hoveredCard) {
-    //  DrawHoveredOutline(gs.hoveredCard);
-    //  if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-    //      gs.activeCard = gs.hoveredCard;
-    //}
-   //
-   //for (int b = BC_RED; b < BC_COUNT; ++b) {
-   //  Back *back = &hmget(gs.backs, b);
-   //  DrawDeckItemToScreen(backsTexture, back->position, back->source, mouse);
-   //}
