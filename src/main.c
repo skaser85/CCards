@@ -7,19 +7,20 @@
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
 
-#if 0
+#if 1
 #define SCREEN_WIDTH 2140 
 #define SCREEN_HEIGHT 1440
+#define SRC_CARD_SCALE 1
 #else
 #define SCREEN_WIDTH 1600 
 #define SCREEN_HEIGHT 960
+#define SRC_CARD_SCALE .5
 #endif
 
 #define SRC_CARD_WIDTH 200
 #define SRC_CARD_HEIGHT 350
 #define SRC_CARD_SPACING_X 8
 #define SRC_CARD_SPACING_Y 5
-#define SRC_CARD_SCALE .5
 
 #define CARD_WIDTH (SRC_CARD_WIDTH*SRC_CARD_SCALE+10)
 #define CARD_HEIGHT (SRC_CARD_HEIGHT*SRC_CARD_SCALE)
@@ -88,6 +89,7 @@ typedef struct {
   DeckKind kind;
   Vector2 position;
   Vector2 cardStart;
+  Rectangle bounds;
 } Deck;
 
 typedef enum {
@@ -120,6 +122,7 @@ typedef struct {
   Backs *backs;
   Back *activeBack;
   DeckFiles files;
+  Deck *hoveredFile;
 } GameState;
 
 bool CreateSTDDeck(Deck *deck) {
@@ -183,6 +186,23 @@ Card *GetNextCard(Deck *src, Deck *dest) {
     src->items[c-1] = src->items[c];
   }
   return &dest->items[dest->count-1];
+}
+
+void AddCardToDeck(Card *card, Deck *deck) {
+  nob_da_append(deck, *card); 
+}
+
+void RemoveCardFromDeck(Card cardToRemove, Deck *deck) {
+  Deck temp = {0};
+  for (size_t c = 0; c < deck->count; ++c) {
+    Card card = deck->items[c];
+    if (card.suit != cardToRemove.suit && card.value != cardToRemove.value)
+      nob_da_append(&temp, card);
+  }
+  deck->count = 0;
+  for (size_t c= 0; c < temp.count; ++c) {
+    nob_da_append(deck, temp.items[c]);
+  }
 }
 
 Card *GetRandomCard(Deck *deck) {
@@ -273,6 +293,7 @@ int main(void) {
   gs.hoveredCard = NULL;
   gs.activeBack = &hmget(backs, BC_BLUE);
   gs.files = deckFiles;
+  gs.hoveredFile = NULL;
 
   size_t total_x = (FILES_COUNT*PILES_WIDTH)+((FILES_COUNT-1)*PILES_SPACING);
 
@@ -282,6 +303,7 @@ int main(void) {
     Deck d = {0};
     d.kind = DECK_FILE;
     d.position = CLITERAL(Vector2) { .x = fx + (PILES_WIDTH * f) + (PILES_SPACING * f), .y = fy };
+    d.bounds = CLITERAL(Rectangle) { .x = d.position.x, .y = d.position.y, .width = PILES_WIDTH, .height = GetScreenHeight()-fy }; 
     for (size_t c = 0; c < f+1; ++c) {
       Card *card = GetNextCard(&gs.deck, &d);
       if (c == f)
@@ -297,6 +319,7 @@ int main(void) {
     ClearBackground(DARKGRAY);
 
     gs.hoveredCard = NULL;
+    gs.hoveredFile = NULL;
 
     Vector2 mouse = GetMousePosition();
     Vector2 delta = GetMouseDelta();
@@ -305,7 +328,15 @@ int main(void) {
       gs.hoveredCard = gs.activeCard;
       UpdatePosition(gs.activeCard, delta);
     }
- 
+
+    for (size_t f = 0; f < gs.files.count; ++f) {
+      Deck d = gs.files.items[f];
+      if (CheckCollisionPointRec(mouse, d.bounds)) {
+        DrawRectangleRec(d.bounds, BLUE);
+        gs.hoveredFile = &gs.files.items[f];
+      }
+    }
+
     Rectangle deckBounds = { .x = 10, .y = 20, .width = PILES_WIDTH, .height = PILES_HEIGHT };
     DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
     
@@ -364,7 +395,12 @@ int main(void) {
         }
       } else {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-          ResetPosition(gs.activeCard);
+          if (gs.hoveredFile) {
+            // idk...remove/add card from/to decks?
+            //
+          } else {
+            ResetPosition(gs.activeCard);
+          }
           gs.activeCard = NULL;
         } else {
           DrawDeckItemToScreen(cardsTexture, gs.activeCard->bounds, gs.activeCard->source, mouse);
