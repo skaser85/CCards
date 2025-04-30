@@ -7,7 +7,7 @@
 #define NOB_IMPLEMENTATION
 #include "../nob.h"
 
-#if 1
+#if 0
 #define SCREEN_WIDTH 2140 
 #define SCREEN_HEIGHT 1440
 #define SRC_CARD_SCALE 1
@@ -123,6 +123,7 @@ typedef struct {
   Back *activeBack;
   DeckFiles files;
   Deck *hoveredFile;
+  Deck *homeFile;
 } GameState;
 
 bool CreateSTDDeck(Deck *deck) {
@@ -145,7 +146,7 @@ bool CreateSTDDeck(Deck *deck) {
         .source = src,
         .bounds = bounds,
         .drawn = false,
-        .flipped = false
+        .flipped = false,
       };
       nob_da_append(deck, c);
     }
@@ -192,11 +193,11 @@ void AddCardToDeck(Card *card, Deck *deck) {
   nob_da_append(deck, *card); 
 }
 
-void RemoveCardFromDeck(Card cardToRemove, Deck *deck) {
+void RemoveCardFromDeck(Card *cardToRemove, Deck *deck) {
   Deck temp = {0};
   for (size_t c = 0; c < deck->count; ++c) {
     Card card = deck->items[c];
-    if (card.suit != cardToRemove.suit && card.value != cardToRemove.value)
+    if (card.suit != cardToRemove->suit && card.value != cardToRemove->value)
       nob_da_append(&temp, card);
   }
   deck->count = 0;
@@ -276,7 +277,7 @@ int main(void) {
   ShuffleDeck(&deck);
   Deck drawn = {0};
   drawn.kind = DECK_DISCARD;
-
+  drawn.bounds = CLITERAL(Rectangle) { .x = 10, .y = 20, .width = PILES_WIDTH, .height = PILES_HEIGHT }; 
   Image backsImg = LoadImage("./assets/backs.png");
   Texture backsTexture = LoadTextureFromImage(backsImg);
   UnloadImage(backsImg);
@@ -294,6 +295,10 @@ int main(void) {
   gs.activeBack = &hmget(backs, BC_BLUE);
   gs.files = deckFiles;
   gs.hoveredFile = NULL;
+  gs.homeFile = NULL;
+  
+  gs.activeBack->bounds.x = gs.drawn.bounds.x + (gs.drawn.bounds.width-(CARD_WIDTH))/2;
+  gs.activeBack->bounds.y = gs.drawn.bounds.y + (gs.drawn.bounds.height-(CARD_HEIGHT))/2;
 
   size_t total_x = (FILES_COUNT*PILES_WIDTH)+((FILES_COUNT-1)*PILES_SPACING);
 
@@ -337,22 +342,19 @@ int main(void) {
       }
     }
 
-    Rectangle deckBounds = { .x = 10, .y = 20, .width = PILES_WIDTH, .height = PILES_HEIGHT };
-    DrawRectangleLinesEx(deckBounds, 5, DARKPURPLE);
+    DrawRectangleLinesEx(gs.drawn.bounds, 5, DARKPURPLE);
     
     if (gs.deck.count > 0) {
-      gs.activeBack->bounds.x = deckBounds.x + (deckBounds.width-(CARD_WIDTH))/2;
-      gs.activeBack->bounds.y = deckBounds.y + (deckBounds.height-(CARD_HEIGHT))/2;
       DrawDeckItemToScreen(backsTexture, gs.activeBack->bounds, gs.activeBack->source, mouse);
 
-      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      if (CheckCollisionPointRec(mouse, gs.drawn.bounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Card *card = GetNextCard(&gs.deck, &gs.drawn); 
-        card->bounds.x = deckBounds.x + deckBounds.width + 25;
+        card->bounds.x = gs.drawn.bounds.x + gs.drawn.bounds.width + 25;
         card->bounds.y = gs.activeBack->bounds.y;
         card->flipped = true;
       }
     } else {
-      if (CheckCollisionPointRec(mouse, deckBounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) & !gs.activeCard) {
+      if (CheckCollisionPointRec(mouse, gs.drawn.bounds) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) & !gs.activeCard) {
         for (size_t c = 0; c < gs.drawn.count; ++c) {
           Card card = gs.drawn.items[c];
           card.drawn = false;
@@ -364,7 +366,7 @@ int main(void) {
     }
 
     const char* text = sizetToString(gs.deck.count, 2);
-    DrawText(text, deckBounds.x, deckBounds.y+deckBounds.height+10, 30, LIME);
+    DrawText(text, gs.drawn.bounds.x, gs.drawn.bounds.y+gs.drawn.bounds.height+10, 30, LIME);
 
     for (size_t c = 0; c < gs.drawn.count; ++c) {
       Card card = gs.drawn.items[c];
@@ -392,16 +394,34 @@ int main(void) {
       if (!gs.activeCard) {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
           gs.activeCard = gs.hoveredCard;
+          if (gs.hoveredFile)
+            gs.homeFile = gs.hoveredFile;
+          if (CheckCollisionPointRec(mouse, gs.hoveredCard->bounds))
+            gs.homeFile = &gs.drawn;
         }
       } else {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
           if (gs.hoveredFile) {
-            // idk...remove/add card from/to decks?
-            //
+            if (gs.hoveredFile->count == 0) {
+              SetPosition(gs.activeCard, gs.hoveredFile->cardStart);
+            } else {
+              Card last = gs.hoveredFile->items[gs.hoveredFile->count-1];
+              Vector2 pos = { .x = last.bounds.x, .y = last.bounds.y };
+              pos.y += (PILES_SPACING*2);
+              RemoveCardFromDeck(gs.activeCard, gs.homeFile);
+              nob_log(NOB_INFO, "%ld", gs.homeFile->count);
+              //nob_log(NOB_INFO, "%d, %d", gs.homeFile->items[gs.homeFile->count-1].suit, gs.homeFile->items[gs.homeFile->count-1].value);
+              if (gs.homeFile->count > 0 && !gs.homeFile->items[gs.homeFile->count-1].flipped) {
+                gs.homeFile->items[gs.homeFile->count-1].flipped = true;
+              }
+              SetPosition(gs.activeCard, pos);
+              AddCardToDeck(gs.activeCard, gs.hoveredFile);
+            }
           } else {
             ResetPosition(gs.activeCard);
           }
           gs.activeCard = NULL;
+          gs.homeFile = NULL;
         } else {
           DrawDeckItemToScreen(cardsTexture, gs.activeCard->bounds, gs.activeCard->source, mouse);
         }
